@@ -1,0 +1,230 @@
+# Local .terraform directories
+**/.terraform/
+.terraform/
+.terraform.lock.hcl
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.tfstate.lock.info
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files, which are likely to contain sensitive data
+*.tfvars
+*.tfvars.json
+*.tfvars.local
+*.tfvars.json.local
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Include override files you do wish to add to version control using negated pattern
+# !example_override.tf
+
+# Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
+*.tfplan
+*.tfplan.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+.terraformrc.hcl
+
+# Sensitive environment files
+.env
+.env.local
+.env.*.local
+
+# Backup files
+*.backup
+*.bak
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.dll
+*.exe
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+*.swp
+*.swo
+
+# Mac OS specific
+.AppleDouble
+.LSOverride
+Icon
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux specific
+*~
+
+# Terraform plan files
+plan
+plan.out
+plan.json
+
+# Terragrunt files
+**/.terragrunt-cache/
+
+# TFLint
+.tflint.hcl
+.tflint.d/
+
+# Checkov
+.checkov.baseline
+.checkov.skip
+
+# Terraform Cloud/Enterprise
+terraform.rc
+.terraformrc
+.terraform.d/
+
+# Local development files
+local.tfvars
+dev.tfvars
+prod.tfvars
+staging.tfvars
+test.tfvars
+
+# Provider specific
+**/provider.tf
+**/versions.tf
+!provider.tf.example
+!versions.tf.example
+
+# Script outputs
+*.txt
+*.html
+*.xml
+*.json
+!terraform.tfvars.example
+!example.tfvars
+
+# Module testing
+test/fixtures/
+test/terraform.tfstate*
+test/.terraform/
+
+# Debug files
+debug.log
+debug.txt
+output.log
+
+# Backup files from various tools
+*.bkp
+*.orig
+*.rej
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Security credentials
+credentials.json
+*.pem
+*.p12
+*.key
+*.cert
+*.crt
+secrets/
+secrets.tfvars
+secrets.auto.tfvars
+*.private
+*.pub
+
+# Docker files (if using Terraform with Docker)
+Dockerfile
+docker-compose.override.yml
+.dockerignore
+
+# Kubernetes files (if using Terraform with K8s)
+kubeconfig
+kubeconfig_*
+.kube/
+*.kubeconfig
+
+# Cloud provider specific
+.aws/
+.gcloud/
+.azure/
+*.pem
+*.ppk
+*.p12
+
+# Ansible specific (if used with Terraform)
+*.retry
+ansible.cfg
+inventory/
+.ansible/
+
+# Python specific (if using Python scripts with Terraform)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node specific (if using Node scripts)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log
+
+# Go specific (if using Go)
+*.exe
+*.exe~
+*.test
+*.prof
+*.out
+vendor/
+
+# Custom for your specific project
+# Add project-specific ignores below this line
+
+# Static website example (if checking out separately)
+static-website-example-CloudFront/
+!static-website-example-CloudFront/.gitkeep
