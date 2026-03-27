@@ -1,206 +1,312 @@
-#activity 1
-# main.tf
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
+############################################
+# ACTIVITY 1 - BASIC SETUP (S3 + CLOUDFRONT)
+############################################
 
+############################################
+# PROVIDER
+############################################
 provider "aws" {
-  region = "ap-southeast-1"  # Singapore region
+  region = "ap-southeast-1"
 }
 
-# Variables
+############################################
+# VARIABLES
+############################################
 variable "bucket_name" {
-  description = "Name of the S3 bucket"
-  type        = string
-  default     = "arista-cf-bucket-terraform"
+  default = "arista-cloudfront"
 }
 
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "dev"
-}
-
-# 1. Create S3 bucket (private, no public access)
-resource "aws_s3_bucket" "static_site" {
+############################################
+# S3 BUCKET (PRIVATE)
+############################################
+resource "aws_s3_bucket" "site" {
   bucket = var.bucket_name
-  
-  tags = {
-    Name        = var.bucket_name
-    Environment = var.environment
-  }
 }
 
-# Block all public access
-resource "aws_s3_bucket_public_access_block" "static_site" {
-  bucket = aws_s3_bucket.static_site.id
-  
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+resource "aws_s3_bucket_public_access_block" "block" {
+  bucket = aws_s3_bucket.site.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
 }
 
-# Enable versioning for backups
-resource "aws_s3_bucket_versioning" "static_site" {
-  bucket = aws_s3_bucket.static_site.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-# 2. Upload static site files (using aws_s3_object)
-resource "aws_s3_object" "website_files" {
-  for_each = fileset("${path.module}/static-website", "**/*")
-  
-  bucket       = aws_s3_bucket.static_site.id
-  key          = each.value
-  source       = "${path.module}/static-website/${each.value}"
-  etag         = filemd5("${path.module}/static-website/${each.value}")
-  content_type = lookup({
-    "html" = "text/html"
-    "css"  = "text/css"
-    "js"   = "application/javascript"
-    "png"  = "image/png"
-    "jpg"  = "image/jpeg"
-    "jpeg" = "image/jpeg"
-    "gif"  = "image/gif"
-    "svg"  = "image/svg+xml"
-  }, element(split(".", each.value), length(split(".", each.value)) - 1), "application/octet-stream")
-}
-
-# 3. Create CloudFront Origin Access Control (OAC)
+############################################
+# ORIGIN ACCESS CONTROL (OAC)
+############################################
 resource "aws_cloudfront_origin_access_control" "oac" {
-  name                              = "${var.bucket_name}-oac"
-  description                       = "OAC for ${var.bucket_name}"
+  name                              = "oac-${var.bucket_name}"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
 
-# 4. Create CloudFront distribution
-resource "aws_cloudfront_distribution" "s3_distribution" {
+############################################
+# CLOUDFRONT DISTRIBUTION (NO DOMAIN, NO HTTPS YET)
+############################################
+resource "aws_cloudfront_distribution" "cf" {
   enabled             = true
-  is_ipv6_enabled     = true
   default_root_object = "index.html"
-  
-  # Origin configuration
+
   origin {
-    domain_name              = aws_s3_bucket.static_site.bucket_regional_domain_name
-    origin_id                = "S3-${var.bucket_name}"
+    domain_name              = aws_s3_bucket.site.bucket_regional_domain_name
+    origin_id                = "s3-origin"
     origin_access_control_id = aws_cloudfront_origin_access_control.oac.id
   }
-  
-  # Default cache behavior
+
   default_cache_behavior {
-    target_origin_id       = "S3-${var.bucket_name}"
-    viewer_protocol_policy = "redirect-to-https"
-    cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6" # CachingOptimized
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    
-    # Lambda@Edge for response headers (optional)
-    function_association {
-      event_type   = "viewer-response"
-      function_arn = aws_cloudfront_function.add_security_headers.arn
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "s3-origin"
+
+    viewer_protocol_policy = "allow-all"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
     }
   }
-  
-  # Price class - use all edge locations for best performance
-  price_class = "PriceClass_All"
-  
-  # Restrictions - no geo restriction
+
   restrictions {
     geo_restriction {
       restriction_type = "none"
     }
   }
-  
-  # SSL certificate - default CloudFront certificate
+
   viewer_certificate {
     cloudfront_default_certificate = true
-    minimum_protocol_version       = "TLSv1.2_2021"
-  }
-  
-  # Custom error responses
-  custom_error_response {
-    error_code         = 403
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-  
-  custom_error_response {
-    error_code         = 404
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-  
-  tags = {
-    Name        = "${var.bucket_name}-distribution"
-    Environment = var.environment
   }
 }
 
-# Optional: CloudFront function to add security headers
-resource "aws_cloudfront_function" "add_security_headers" {
-  name    = "add-security-headers"
-  runtime = "cloudfront-js-2.0"
-  comment = "Add security headers to responses"
-  publish = true
-  
-  code = <<-EOF
-    function handler(event) {
-      var response = event.response;
-      var headers = response.headers;
-      
-      headers['strict-transport-security'] = { value: 'max-age=63072000; includeSubdomains; preload' };
-      headers['x-content-type-options'] = { value: 'nosniff' };
-      headers['x-frame-options'] = { value: 'DENY' };
-      headers['x-xss-protection'] = { value: '1; mode=block' };
-      headers['referrer-policy'] = { value: 'strict-origin-when-cross-origin' };
-      
-      return response;
-    }
-  EOF
-}
-
-# 5. S3 bucket policy allowing CloudFront access
-resource "aws_s3_bucket_policy" "allow_cloudfront" {
-  bucket = aws_s3_bucket.static_site.id
-  policy = data.aws_iam_policy_document.allow_cloudfront_access.json
-}
-
-data "aws_iam_policy_document" "allow_cloudfront_access" {
+############################################
+# S3 BUCKET POLICY (ALLOW CLOUDFRONT ONLY)
+############################################
+data "aws_iam_policy_document" "bucket_policy" {
   statement {
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.site.arn}/*"]
+
     principals {
       type        = "Service"
       identifiers = ["cloudfront.amazonaws.com"]
     }
-    
-    actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.static_site.arn}/*"]
-    
+
     condition {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
-      values   = [aws_cloudfront_distribution.s3_distribution.arn]
+      values   = [aws_cloudfront_distribution.cf_full.arn]
     }
   }
 }
 
-# Outputs
-output "cloudfront_domain_name" {
-  value = aws_cloudfront_distribution.s3_distribution.domain_name
-  description = "CloudFront distribution domain name"
+resource "aws_s3_bucket_policy" "policy" {
+  bucket = aws_s3_bucket.site.id
+  policy = data.aws_iam_policy_document.bucket_policy.json
 }
 
-output "s3_bucket_name" {
-  value = aws_s3_bucket.static_site.id
-  description = "S3 bucket name"
+
+
+
+
+
+############################################
+# ACTIVITY 2 - FULL SETUP (DOMAIN + HTTPS + WAF)
+############################################
+
+############################################
+# SECOND PROVIDER FOR ACM
+############################################
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
 }
+
+variable "domain_name" {
+  default = "arista-cloudfront.sctp-sandbox.com"
+}
+
+############################################
+# ACM CERTIFICATE
+############################################
+resource "aws_acm_certificate" "cert" {
+  provider          = aws.us_east_1
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+}
+
+############################################
+# ROUTE53 ZONE
+############################################
+data "aws_route53_zone" "zone" {
+  name = "sctp-sandbox.com"
+}
+
+############################################
+# CERT VALIDATION RECORD
+############################################
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.cert.domain_validation_options : dvo.domain_name => {
+      name  = dvo.resource_record_name
+      type  = dvo.resource_record_type
+      value = dvo.resource_record_value
+    }
+  }
+
+  zone_id = data.aws_route53_zone.zone.zone_id
+  name    = each.value.name
+  type    = each.value.type
+  ttl     = 300
+  records = [each.value.value]
+}
+
+resource "aws_acm_certificate_validation" "cert" {
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.cert.arn
+  validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
+}
+
+############################################
+# UPDATE CLOUDFRONT FOR HTTPS + DOMAIN + WAF
+############################################
+
+  resource "aws_wafv2_web_acl" "waf" {
+  provider = aws.us_east_1
+  name  = "cf-waf"
+  scope = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "cf-waf"
+    sampled_requests_enabled   = true
+  }
+
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "common-rules"
+      sampled_requests_enabled   = true
+    }
+  }
+}
+
+############################################
+# UPDATE CLOUDFRONT SETTINGS
+############################################
+resource "aws_cloudfront_distribution" "cf_full" {
+  enabled             = true
+  default_root_object = "index.html"
+
+  origin {
+    domain_name              = aws_s3_bucket.site.bucket_regional_domain_name
+    origin_id                = "s3-origin"
+    origin_access_control_id = aws_cloudfront_origin_access_control.oac.id
+  }
+
+  default_cache_behavior {
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "s3-origin"
+
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = aws_acm_certificate_validation.cert.certificate_arn
+    ssl_support_method       = "sni-only"
+  }
+
+  web_acl_id = aws_wafv2_web_acl.waf.arn
+
+  aliases = [var.domain_name]
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+}
+
+
+############################################
+# ROUTE53 ALIAS RECORD
+############################################
+resource "aws_route53_record" "alias" {
+  zone_id = data.aws_route53_zone.zone.zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.cf_full.domain_name
+    zone_id                = aws_cloudfront_distribution.cf_full.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+
+############################################
+# OUTPUTS
+############################################
+
+output "s3_bucket_name" {
+  value = aws_s3_bucket.site.bucket
+}
+
+output "cloudfront_distribution_id" {
+  value = aws_cloudfront_distribution.cf.id
+}
+
+output "cloudfront_domain_name_activity1" {
+  value = aws_cloudfront_distribution.cf.domain_name
+}
+
+output "cloudfront_distribution_id_full" {
+  value = aws_cloudfront_distribution.cf_full.id
+}
+
+output "cloudfront_domain_name_activity2" {
+  value = aws_cloudfront_distribution.cf_full.domain_name
+}
+
+output "website_url" {
+  value = "https://${var.domain_name}"
+}
+
+
+# Outputs:
+
+# cloudfront_distribution_id = "E22CFNG272QZ6X"
+# cloudfront_distribution_id_full = "E3TLMVUP4557GJ"
+# cloudfront_domain_name_activity1 = "d2locdo121k47m.cloudfront.net"
+# cloudfront_domain_name_activity2 = "d2mfa69dhubyy3.cloudfront.net"
+# s3_bucket_name = "arista-cloudfront"
+# website_url = "https://arista-cloudfront.sctp-sandbox.com"
+# sus@Vivobook-X409UA:~/cloudfront-tf$
